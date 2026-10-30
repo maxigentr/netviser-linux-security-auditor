@@ -1,0 +1,57 @@
+name: tests
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  unit:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # ubuntu-22.04: setup-python no longer ships 3.8 for 24.04 runners
+        os: [ubuntu-22.04]
+        python: ["3.8", "3.9", "3.10", "3.11", "3.12", "3.13"]
+        include:
+          - os: macos-latest
+            python: "3.13"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - run: python -m unittest discover -s tests -t . -v
+      - name: Local audit smoke test
+        run: python netviser_cve_audit.py --local --no-report -v
+
+  distro:
+    # Containers share the runner's kernel but have their own userland and
+    # network namespace: this validates the collector against each distro's tools.
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        image:
+          - ubuntu:22.04
+          - ubuntu:24.04
+          - debian:12
+          - rockylinux/rockylinux:9
+          - almalinux:9
+          - fedora:latest
+    container: ${{ matrix.image }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install python3 and iproute2
+        run: |
+          if command -v apt-get >/dev/null; then
+            apt-get update && apt-get install -y --no-install-recommends python3 iproute2
+          else
+            dnf install -y python3 iproute
+          fi
+      - run: python3 -m unittest discover -s tests -t . -v
+      - run: python3 netviser_cve_audit.py --local -v --sample-interval 2 --output distro
+      - run: python3 -c "import json; r = json.load(open('distro.json'))['results'][0]; assert r['status'] == 'ok', r; print(r['facts'])"

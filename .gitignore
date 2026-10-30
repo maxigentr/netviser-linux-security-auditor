@@ -1,0 +1,11 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+# Audit reports may contain host inventory; never commit them.
+netviser_audit.json
+netviser_audit.csv
+*.audit.json
+*.audit.csv

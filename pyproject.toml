@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "netviser-linux-security-auditor"
+dynamic = ["version"]
+description = "Read-only Linux kernel security configuration auditor for local and SSH targets"
+readme = "README.md"
+requires-python = ">=3.8"
+license = { text = "MIT" }
+authors = [{ name = "Netviser Bilişim Teknolojileri" }]
+keywords = ["linux", "security", "audit", "kernel", "mptcp", "ssh", "cve"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: System Administrators",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: MacOS",
+    "Programming Language :: Python :: 3",
+    "Topic :: Security",
+    "Topic :: System :: Systems Administration",
+]
+
+[project.scripts]
+netviser-audit = "netviser_audit.cli:main"
+
+[tool.setuptools.dynamic]
+version = { attr = "netviser_audit.__version__" }
+
+[tool.setuptools.packages.find]
+include = ["netviser_audit*"]

@@ -1,0 +1,6 @@
+# One SSH destination per line. Lines starting with # are ignored.
+# Anything OpenSSH accepts works, including ~/.ssh/config aliases.
+root@192.168.1.10
+admin@web01.example.com
+ssh://root@db01.example.com:2290
+web02
