@@ -1,8 +1,8 @@
 """CVE-2026-98432: Linux kernel IPv4 TCP use-after-free.
 
-This check does NOT determine whether the vendor fix is installed. It reports
-the kernel features this project associates with the vulnerability (TCP request
-socket migration and MPTCP) and always marks patch status as unverified.
+This check reports the kernel features this project associates with the
+vulnerability (TCP request socket migration and MPTCP). Whether the vendor fix
+is installed is reported by the ``patch`` check as ``patch.CVE-2026-98432``.
 """
 from .base import INFO, REVIEW, UNKNOWN, Check, Finding, to_int
 
@@ -12,11 +12,12 @@ CVE_ID = "CVE-2026-98432"
 class Cve202698432Check(Check):
     id = "cve_2026_98432"
     title = CVE_ID + " related configuration"
-    requires = ("kernel", "tcp_migration", "mptcp")
-    finding_keys = ("cve_2026_98432.related_config", "cve_2026_98432.patch_status")
+    requires = ("kernel", "tcp_migration", "mptcp", "patch")
+    finding_keys = ("cve_2026_98432.related_config",)
+    cve_ids = (CVE_ID,)
 
-    def evaluate(self, facts):
-        return [self._related_config(facts), self._patch_status(facts)]
+    def evaluate(self, facts, context=None):
+        return [self._related_config(facts)]
 
     @staticmethod
     def _related_config(facts):
@@ -47,15 +48,3 @@ class Cve202698432Check(Check):
         return Finding(key, INFO, "RELATED_FEATURES_DISABLED",
                        "Related features are disabled or not present",
                        "This does not establish protection against %s." % CVE_ID)
-
-    @staticmethod
-    def _patch_status(facts):
-        vendor = facts.get("os_id")
-        if not vendor or vendor == "unknown":
-            vendor = "distribution"
-        return Finding("cve_2026_98432.patch_status", UNKNOWN, "UNVERIFIED",
-                       "Vendor patch status is not verified by this tool",
-                       "Compare kernel package '%s' (%s) with the %s security advisory for %s."
-                       % (facts.get("kernel_package", "unavailable"),
-                          facts.get("kernel_release", "?"),
-                          vendor, CVE_ID))

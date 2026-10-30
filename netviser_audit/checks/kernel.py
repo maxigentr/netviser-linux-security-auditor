@@ -11,6 +11,7 @@ if [ -r /etc/os-release ]; then
   nv_kv os_pretty_name "$(nv_osr PRETTY_NAME)"
   nv_kv os_id "$(nv_osr ID)"
   nv_kv os_version_id "$(nv_osr VERSION_ID)"
+  nv_kv os_version_codename "$(nv_osr VERSION_CODENAME)"
 else
   nv_kv os_pretty_name "$(uname -s 2>/dev/null)"
   nv_kv os_id unknown
@@ -40,7 +41,7 @@ class KernelCheck(Check):
                     "kernel_newest_installed")
     finding_keys = ("kernel.identity", "kernel.pending_reboot")
 
-    def evaluate(self, facts):
+    def evaluate(self, facts, context=None):
         release = facts.get("kernel_release", "")
         if facts.get("kernel_name") != "Linux":
             identity = Finding("kernel.identity", UNKNOWN, "NOT_LINUX",

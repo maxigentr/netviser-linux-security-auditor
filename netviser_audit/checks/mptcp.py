@@ -88,7 +88,7 @@ class MptcpCheck(Check):
     finding_keys = ("mptcp.sysctl", "mptcp.sockets", "mptcp.counters", "mptcp.dependencies",
                     "mptcp.usage")
 
-    def evaluate(self, facts):
+    def evaluate(self, facts, context=None):
         sysctl = self._sysctl(facts)
         sockets = self._sockets(facts)
         counters = self._counters(facts)

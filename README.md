@@ -5,13 +5,14 @@ A lightweight, open-source Linux security auditing tool written in Python.
 Audit local and remote Linux servers over SSH without installing agents or
 modifying system configuration.
 
-> **This is a configuration auditor, not a vulnerability scanner.**
-> It reports kernel settings and usage associated with a vulnerability. It does
-> **not** verify whether a vendor's CVE patch has been installed.
+> **This is a configuration and patch-status auditor, not an exploit scanner.**
+> It reports kernel settings and usage associated with a vulnerability, and
+> compares the *running* kernel package with the vendor's fixed version. It
+> never attempts to trigger a vulnerability.
 
 ## Features
 
-| Feature | v0.1.0 |
+| Feature | v0.2.0 |
 |---|---|
 | Python 3.8+, no third-party dependencies | ✅ |
 | Local Linux audit | ✅ |
@@ -22,7 +23,7 @@ modifying system configuration.
 | MPTCP configuration **and usage** inspection | ✅ |
 | Kernel, distribution and pending-reboot detection | ✅ |
 | JSON / CSV reporting | ✅ |
-| CVE patch verification | ❌ not yet |
+| Kernel CVE patch verification (Ubuntu, Debian, RHEL, Rocky, AlmaLinux, CentOS) | ✅ |
 | Automatic security updates | ❌ never |
 | Changing server configuration | ❌ never |
 
@@ -68,6 +69,9 @@ python3 netviser_cve_audit.py --host admin@web01 --sudo
 
 # Watch MPTCP counters for 60 seconds to see if MPTCP is used right now
 python3 netviser_cve_audit.py --hosts servers.txt --sample-interval 60
+
+# Also check whether other kernel CVEs are patched
+python3 netviser_cve_audit.py --hosts servers.txt --cve CVE-2024-1086,CVE-2024-26925
 ```
 
 The tool can also be installed (`pip install .`) and run as `netviser-audit`
@@ -83,6 +87,10 @@ hosts file format. Per-host ports use `ssh://user@host:port` or an
 |---|---|
 | `--local` / `--host H` / `--hosts FILE` | What to audit |
 | `--checks IDS` | Comma-separated subset (see `--list-checks`); dependencies are added automatically |
+| `--cve IDS` | Also report the kernel patch status of these CVEs (repeatable or comma-separated) |
+| `--offline` | Do not download vendor advisory data |
+| `--advisories FILE` | Use advisory data saved earlier; missing records are still downloaded unless `--offline` |
+| `--save-advisories FILE` | Save the advisory data used, for offline or repeatable runs |
 | `--sudo` | Run the collector with `sudo -n` (never prompts) |
 | `--sample-interval N` | Read MPTCP counters twice, N seconds apart |
 | `--output PREFIX` | Report prefix (default `netviser_audit` → `.json`, `.csv`) |
@@ -101,12 +109,63 @@ Exit status: `0` success, `1` a target could not be scanned, `2` usage error,
 | Id | What it inspects |
 |---|---|
 | `kernel` | Distribution, kernel release, running kernel package, newer installed kernel / reboot required |
+| `patch` | Patch status of each CVE for the running kernel package, from vendor advisory data |
 | `tcp_migration` | `net.ipv4.tcp_migrate_req`; loaded `sk_reuseport` BPF programs (root + bpftool) |
 | `mptcp` | `net.mptcp.enabled`, path manager, `CONFIG_MPTCP`, MPTCP sockets and processes, handshake counters, mptcpize usage |
-| `cve_2026_98432` | Summary of the above for CVE-2026-98432; patch status always *unverified* |
+| `cve_2026_98432` | Related configuration for CVE-2026-98432; its patch status is `patch.CVE-2026-98432` |
 
 Every finding has a status — `OK`, `INFO`, `REVIEW` or `UNKNOWN` — and a
 machine-readable verdict (e.g. `mptcp.usage = IN_USE`).
+
+## CVE patch verification
+
+The `patch` check answers one question per CVE: *is the kernel that is running
+right now fixed according to the distribution vendor?*
+
+1. On the target, the collector identifies the package that owns the running
+   kernel (`dpkg-query` / `rpm -qf`): its name, exact version and source
+   package. It also lists CVE ids mentioned in that package's changelog and in
+   loaded livepatches (`canonical-livepatch`, `kpatch-patch`).
+2. On the controller, the vendor's record for each CVE is downloaded once and
+   the running version is compared with the fixed version using the package
+   manager's own ordering (dpkg or rpm), so backports, epochs and `~` versions
+   are handled correctly.
+
+| Distribution | Advisory source |
+|---|---|
+| Ubuntu | [Ubuntu Security API](https://ubuntu.com/security/cves) — per release and kernel flavour (`linux`, `linux-hwe-*`, `linux-aws`, …) |
+| Debian | Debian Security Tracker data via [OSV](https://osv.dev) |
+| RHEL, Rocky Linux, AlmaLinux, CentOS | [Red Hat Security Data API](https://access.redhat.com/hydra/rest/securitydata) — main RHEL stream |
+
+Only CVE identifiers are sent to these services; nothing about your hosts
+leaves the controller. For air-gapped use, run once with
+`--save-advisories adv.json` and later with `--offline --advisories adv.json`.
+
+| Verdict | Status | Meaning |
+|---|---|---|
+| `PATCHED` | OK | Running kernel version ≥ the vendor's fixed version |
+| `NOT_AFFECTED` | OK | Vendor says this release / kernel is not affected |
+| `LIVEPATCHED` | OK | A loaded livepatch lists the CVE as fixed |
+| `VULNERABLE` | REVIEW | A fix is released; the running kernel is older. Install it and reboot |
+| `FIX_PENDING` | REVIEW | Vendor has prepared a fix that is not released yet (Ubuntu) |
+| `FIX_NOT_AVAILABLE` | REVIEW | Affected, no fix published yet |
+| `WONT_FIX` | REVIEW | Vendor will not fix this release (e.g. end of support) |
+| `MENTIONED_IN_CHANGELOG` | INFO | No vendor verdict, but the running kernel's changelog references the CVE |
+| `NO_DATA` | UNKNOWN | Vendor has no record for this CVE, release or kernel flavour |
+| `UNSUPPORTED` | UNKNOWN | No advisory source for this distribution (e.g. Fedora, SUSE) |
+| `NOT_CHECKED` | UNKNOWN | Advisory data unavailable (`--offline`, network error) or kernel package unknown |
+
+Limitations:
+
+- The *running* kernel is evaluated. An installed but not yet booted fix is
+  still `VULNERABLE`, and the finding says so.
+- Red Hat data is for the main RHEL stream; EUS/AUS/E4S minor-release streams
+  are not considered. Rocky Linux and AlmaLinux ship the same kernel versions
+  and are compared with RHEL data. CentOS Linux 7/8 are end-of-life.
+- Custom-built kernels, or kernels not installed from a package, cannot be
+  evaluated (`NOT_CHECKED`).
+- Changelog files shipped by Ubuntu are truncated, so the absence of a CVE
+  from the changelog means nothing; it is only used when the vendor has no data.
 
 ## MPTCP usage assessment
 
@@ -151,9 +210,10 @@ a Linux kernel IPv4 TCP use-after-free vulnerability. The tool inspects:
 - Linux kernel version and package
 - Operating system information
 
+Its patch status is reported as `patch.CVE-2026-98432`.
+
 ### Important security notice
 
-- This tool does **not** verify whether your vendor's security patch is installed.
 - Disabling TCP migration or MPTCP is **not** a verified mitigation for CVE-2026-98432.
 - Always consult your distribution's official security advisories and install
   the kernel security update. Kernel updates only take effect after a reboot —
@@ -170,10 +230,15 @@ The tool does not:
 - apply security patches
 
 Commands run on targets only read: `/proc`, `/sys`, `/etc/os-release`,
-`/boot`, `uname`, `ss`, `dpkg-query`/`rpm`, `bpftool prog show` and `grep` over
-systemd unit directories. Two side effects to be aware of: querying MPTCP
-sockets with `ss -M` may cause the kernel to autoload the `mptcp_diag`
-diagnostics module, and SSH logins appear in the target's auth logs.
+`/boot`, `uname`, `ss`, `dpkg-query`/`rpm` (including `rpm -q --changelog`),
+the kernel package's `changelog.Debian.gz`, `canonical-livepatch status`,
+`bpftool prog show` and `grep` over systemd unit directories. Two side effects
+to be aware of: querying MPTCP sockets with `ss -M` may cause the kernel to
+autoload the `mptcp_diag` diagnostics module, and SSH logins appear in the
+target's auth logs.
+
+The controller makes outbound HTTPS requests only to the advisory sources
+listed above, and only when the `patch` check runs without `--offline`.
 
 ## Development
 
@@ -204,7 +269,8 @@ python3 -m zipapp build/pyz -m netviser_audit.cli:main -p "/usr/bin/env python3"
 
 ## Roadmap
 
-- Vendor-specific CVE patch verification
+- Patch data for more distributions (SUSE, Fedora, Amazon Linux, Oracle Linux UEK)
+- Remediation plan output (commands for the operator to review; the tool stays read-only)
 - Additional Linux kernel security checks
 - Extended eBPF inspection
 - HTML reporting

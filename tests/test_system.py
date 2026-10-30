@@ -104,7 +104,7 @@ class ScriptTests(unittest.TestCase):
 class SelectionTests(unittest.TestCase):
     def test_dependencies_are_added_in_registry_order(self):
         ids = [c.id for c in select_checks(["cve_2026_98432"])]
-        self.assertEqual(ids, ["kernel", "tcp_migration", "mptcp", "cve_2026_98432"])
+        self.assertEqual(ids, ["kernel", "patch", "tcp_migration", "mptcp", "cve_2026_98432"])
 
     def test_unknown_check(self):
         with self.assertRaises(KeyError):

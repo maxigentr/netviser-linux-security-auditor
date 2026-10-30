@@ -22,7 +22,7 @@ class TcpMigrationCheck(Check):
     report_facts = ("tcp_migrate_req", "bpf_sk_reuseport_progs")
     finding_keys = ("tcp_migration.sysctl", "tcp_migration.bpf")
 
-    def evaluate(self, facts):
+    def evaluate(self, facts, context=None):
         value = facts.get("tcp_migrate_req", "unavailable")
         if value == "1":
             sysctl = Finding("tcp_migration.sysctl", REVIEW, "ENABLED",

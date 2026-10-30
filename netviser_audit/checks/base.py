@@ -1,6 +1,6 @@
 """Types shared by all checks."""
 from dataclasses import asdict, dataclass
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 OK = "OK"
 INFO = "INFO"
@@ -22,6 +22,14 @@ class Finding:
         return asdict(self)
 
 
+@dataclass
+class Context:
+    """Controller-side data shared by all hosts of a run."""
+    cves: Tuple[str, ...] = ()   # CVE ids whose patch status is evaluated
+    advisories: Any = None       # advisories.AdvisoryDB, or None when not available
+    offline: bool = False
+
+
 class Check:
     """A check contributes a POSIX sh collector snippet and evaluates the facts it produced.
 
@@ -36,8 +44,9 @@ class Check:
     collector = ""
     report_facts: Tuple[str, ...] = ()  # facts exported as CSV columns
     finding_keys: Tuple[str, ...] = ()  # findings exported as CSV columns
+    cve_ids: Tuple[str, ...] = ()       # CVEs whose patch status this check relies on
 
-    def evaluate(self, facts: Facts) -> List[Finding]:
+    def evaluate(self, facts: Facts, context: Optional[Context] = None) -> List[Finding]:
         raise NotImplementedError
 
 

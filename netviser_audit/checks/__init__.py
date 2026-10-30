@@ -5,9 +5,11 @@ from .base import Check
 from .cve_2026_98432 import Cve202698432Check
 from .kernel import KernelCheck
 from .mptcp import MptcpCheck
+from .patch import PatchCheck
 from .tcp_migration import TcpMigrationCheck
 
-ALL_CHECKS = (KernelCheck(), TcpMigrationCheck(), MptcpCheck(), Cve202698432Check())
+ALL_CHECKS = (KernelCheck(), PatchCheck(), TcpMigrationCheck(), MptcpCheck(),
+              Cve202698432Check())
 CHECKS_BY_ID = {c.id: c for c in ALL_CHECKS}
 
 

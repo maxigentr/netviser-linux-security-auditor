@@ -8,8 +8,9 @@ from typing import Dict, List, Optional, TextIO
 from . import __version__
 from .checks.base import INFO, OK, REVIEW, UNKNOWN, Finding
 
-SCOPE = ("Configuration audit only. Does NOT verify whether vendor CVE patches are installed; "
-         "confirm patch status with your distribution's security advisories.")
+SCOPE = ("Read-only configuration audit. Kernel CVE patch status compares the running kernel "
+         "package with vendor advisory data (Ubuntu, Debian, Red Hat); it is not an "
+         "exploitability test.")
 STATUS_ORDER = {REVIEW: 0, UNKNOWN: 1, INFO: 2, OK: 3}
 
 
@@ -29,14 +30,17 @@ class HostResult:
         return next((f for f in self.findings if f.key == key), None)
 
 
-def build_report(results, checks):
-    return {
+def build_report(results, checks, advisories=None):
+    report = {
         "tool": {"name": "netviser-linux-security-auditor", "version": __version__},
         "generated_utc": datetime.datetime.now(datetime.timezone.utc).isoformat(),
         "scope": SCOPE,
         "checks": [c.id for c in checks],
-        "results": [r.to_dict() for r in results],
     }
+    if advisories is not None:
+        report["advisories"] = advisories.summary()
+    report["results"] = [r.to_dict() for r in results]
+    return report
 
 
 def csv_safe(value) -> str:
@@ -45,17 +49,20 @@ def csv_safe(value) -> str:
     return "'" + text if text[:1] in ("=", "+", "-", "@") else text
 
 
-def csv_columns(checks) -> List[str]:
+def csv_columns(checks, results=()) -> List[str]:
     columns = ["target", "status"]
     for check in checks:
         columns += [f for f in check.report_facts if f not in columns]
     for check in checks:
         columns += list(check.finding_keys)
+    # Findings without a fixed key, e.g. one "patch.<CVE>" column per CVE.
+    for r in results:
+        columns += [f.key for f in r.findings if f.key not in columns]
     return columns + ["error"]
 
 
 def write_csv(stream: TextIO, results, checks):
-    columns = csv_columns(checks)
+    columns = csv_columns(checks, results)
     writer = csv.writer(stream)
     writer.writerow(columns)
     for r in results:
@@ -82,15 +89,24 @@ def _verdict(result, key):
     return f.verdict if f else "-"
 
 
+def _patch_summary(result):
+    """Most severe patch verdict, with the number of further CVEs."""
+    found = [f for f in result.findings if f.key.startswith("patch.")]
+    if not found:
+        return "-"
+    worst = min(found, key=lambda f: STATUS_ORDER.get(f.status, 9))
+    return worst.verdict + (" +%d" % (len(found) - 1) if len(found) > 1 else "")
+
+
 def print_summary(results, stream, verbose=False):
-    header = "%-28s %-6s %-26s %-11s %-11s %s" % ("TARGET", "STATUS", "KERNEL", "MIGRATE", "MPTCP",
-                                                "MPTCP USAGE")
+    header = "%-28s %-6s %-26s %-11s %-11s %-15s %s" % (
+        "TARGET", "STATUS", "KERNEL", "MIGRATE", "MPTCP", "MPTCP USAGE", "CVE PATCH")
     stream.write(header + "\n" + "-" * len(header) + "\n")
     for r in results:
-        stream.write("%-28.28s %-6.6s %-26.26s %-11.11s %-11.11s %s\n" % (
+        stream.write("%-28.28s %-6.6s %-26.26s %-11.11s %-11.11s %-15.15s %s\n" % (
             r.target, r.status, r.facts.get("kernel_release", "-"),
             r.facts.get("tcp_migrate_req", "-"), r.facts.get("mptcp_enabled", "-"),
-            _verdict(r, "mptcp.usage")))
+            _verdict(r, "mptcp.usage"), _patch_summary(r)))
     for r in results:
         if r.error:
             stream.write("\n%s\n  ERROR: %s\n" % (r.target, r.error))

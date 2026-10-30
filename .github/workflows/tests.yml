@@ -54,4 +54,4 @@ jobs:
           fi
       - run: python3 -m unittest discover -s tests -t . -v
       - run: python3 netviser_cve_audit.py --local -v --sample-interval 2 --output distro
-      - run: python3 -c "import json; r = json.load(open('distro.json'))['results'][0]; assert r['status'] == 'ok', r; print(r['facts'])"
+      - run: python3 -c "import json; r = json.load(open('distro.json'))['results'][0]; assert r['status'] == 'ok', r; assert any(f['key'] == 'patch.CVE-2026-98432' for f in r['findings']), r; print(r['facts'])"

@@ -2,6 +2,8 @@
 import re
 from typing import Dict, Iterable, Tuple
 
+from .advisories import CVE_RE
+
 PREFIX = "NVA:"
 END_KEY = "__end"
 MAX_KEYS = 500
@@ -11,7 +13,7 @@ PRELUDE = r'''#!/bin/sh
 # Netviser Linux Security Auditor collector. POSIX sh, read-only.
 # Facts are printed as "NVA:key=value"; every other line is ignored.
 LC_ALL=C; export LC_ALL
-PATH=/usr/sbin:/usr/bin:/sbin:/bin:$PATH; export PATH
+PATH=/usr/sbin:/usr/bin:/sbin:/bin:$PATH:/snap/bin; export PATH
 nv_kv() { printf 'NVA:%s=' "$1"; printf '%s' "$2" | tr '\r\n\t' '   '; printf '\n'; }
 nv_have() { command -v "$1" >/dev/null 2>&1; }
 nv_sysctl() { if [ -r "/proc/sys/$1" ]; then cat "/proc/sys/$1" 2>/dev/null; else echo unavailable; fi; }
@@ -24,8 +26,14 @@ _KEY_RE = re.compile(r"^[A-Za-z0-9_.]{1,64}$")
 _CTRL_RE = re.compile(r"[\x00-\x1f\x7f-\x9f]")
 
 
-def build_script(checks: Iterable, sample_interval: int = 0) -> str:
-    parts = [PRELUDE, "NV_SAMPLE_INTERVAL=%d" % int(sample_interval)]
+def build_script(checks: Iterable, sample_interval: int = 0, cves: Iterable[str] = ()) -> str:
+    cves = list(cves)
+    for cve in cves:
+        # Interpolated into the script: only strictly formatted ids are accepted.
+        if not CVE_RE.match(cve):
+            raise ValueError("invalid CVE id: %r" % cve)
+    parts = [PRELUDE, "NV_SAMPLE_INTERVAL=%d" % int(sample_interval),
+             "NV_CVES='%s'" % " ".join(cves)]
     for check in checks:
         if check.collector:
             parts.append("# --- check: %s ---" % check.id)

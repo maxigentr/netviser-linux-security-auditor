@@ -153,11 +153,6 @@ class CveTests(unittest.TestCase):
                                               mptcp_enabled="unavailable"))
         self.assertEqual(f["cve_2026_98432.related_config"].verdict, "RELATED_FEATURES_NOT_PRESENT")
 
-    def test_patch_status_always_unverified(self):
-        f = by_key(Cve202698432Check(), facts(tcp_migrate_req="0", mptcp_enabled="0"))
-        self.assertEqual(f["cve_2026_98432.patch_status"].verdict, "UNVERIFIED")
-        self.assertIn("ubuntu", f["cve_2026_98432.patch_status"].detail)
-
 
 if __name__ == "__main__":
     unittest.main()
